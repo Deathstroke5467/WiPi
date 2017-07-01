@@ -19,69 +19,75 @@
 DIR=/opt/WiPi
 
 #Config
-inint="wlan0"
-outint="intwifi0"
-apconf="$DIR/conf/hostapd.conf"   #hostapd config
+apconf="$DIR/conf/AP.cfg" #user AP config
+hostapdconf="$DIR/conf/hostapd.conf"   #hostapd config
 dnsconf="$DIR/conf/dnsmasq.conf"  #dnsmasq config
 
-#if [ !  . $apconf] || [ ! . $dnsconf ] ; then
+if [ ! -f  $hostapdconf ] || [ ! -f $dnsconf ] || [ ! -f $apconf ] ; then
+ "one or more config files in '$DIR/conf' are missing"
+else
+  . $apconf
+fi
 
-#fi
-
-start_all() {
-#  case $2 in
-#    s)
-#    ip link set dev $intin down
-#    macchanger -r $intin ;;
-#  esac
-
-  #add rfkill unblock??
-  sudo ip link set dev $inint up
+ap_load() {
+  sudo ip link set dev $inint up > /dev/null && printf '%s\n' "$inint up"
 
   #start hostapd
-  sed -i "/interface=/c \interface=$inint" $apconf
-  sudo hostapd -B $apconf
+  sudo sed -i "/interface=/c \interface=$inint" $hostapdconf
+  if ! sudo hostapd -B $hostapdconf ; then
+    printf '%s\n' "hostapd failed to start"
+  fi
   sleep 2
 
-address="10.0.0"
   #configure routing for interface
   [ -z $mask] && mask="24" #if netmask is not defined set to 255.255.255.0
-echo "mask is $mask"
   sudo ip addr add "$address.1"/$mask dev $inint
   sudo ip ro add  "$address.0"/$mask via "$address.1"
 
   #start DNS server
-  sudo dnsmasq -z -C $dnsconf -i $inint -I lo
+  if ! sudo dnsmasq -z -C $dnsconf -i $inint -I lo ; then
+    printf '%s\n' "dnsmasq failed to start"
+  fi
 
   #forward ipv4
   sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 
   #setup iptable rules
-  #sudo iptables -t nat -A POSTROUTING -o $outint -j MASQUERADE
-  #sudo iptables -A FORWARD -i $intin -o $outint -j ACCEPT
   sudo iptables -t nat -A POSTROUTING -o $outint -j MASQUERADE
   sudo iptables -A FORWARD -i $outint -o $inint -m state --state RELATED,ESTABLISHED -j ACCEPT
   sudo iptables -A FORWARD -i $inint -o $outint -j ACCEPT
-
-  #check if dnsmasq and hostapd are running properly
-  printf '%s\n' "AP is now started"
 }
 
-stop_all() {
-  #$stop="$(pkill hostapd) $(pkill dnsmasq) $(iptables -t nat F)"
+start() {
+  if ap_load ; then
+    printf '%s\n' "AP is now started"
+  else
+    reload
+  fi
+}
+
+stop() {
   sudo pkill hostapd
   sudo pkill dnsmasq
-  #iptables -t nat -F
+  sudo iptables -t nat -F
+  #"WiPi successfully stopped"
+}
+
+reload() {
+  if printf '%s\n' "stopping AP" stop && ap_load ; then
+    printf '%s\n' "AP is now started"
+  else
+    printf '%s\n' "failed to reload" && exit 1
+  fi
 }
 
 case $1 in
   [sS][tT][aA][rR][tT]|i)
-    start_all ;;
+    start ;;
   [sS][tT][oO][pP]|k)
-    stop_all ;;
+    stop ;;
   [rR][eE][lL][oO][aA][dD]|r)
-    stop_all
-    start_all ;;
+    reload;;
   *)
     printf '%s\n' "Options:" "start  | i" "stop   | k" "reload | r" "Usage: $0 start" ;;
 esac

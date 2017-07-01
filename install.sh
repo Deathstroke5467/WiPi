@@ -36,15 +36,24 @@ sudo install -m 644 conf/* $DIR/conf/
 sudo install -m 755 WiPi.sh $DIR/
 
 #install dependencies
-. lib/install-func.cfg || exit 1
 printf '%s\n' "Installing Dependencies"
+[ ! -f "lib/DEAL-Lib.cfg" ] && printf '%s\n' "${RED}!!! lib is missing${NORMAL}" && exit 1
+. lib/DEAL-Lib.cfg
 packlist="iptables iproute hostapd dnsmasq"
-[ ! -f "lib/install-func.cfg" ] && printf '%s\n' "!!! lib is missing" && exit 1
-pack_install2
+pack_install
 
 #disables services at boot
-printf '%s\n' "Disabling hostapd and dnsmasq services at boot" "Enable WiPi at boot to start your AP at boot"
-sudo systemctl disable darone.service
+printf '%s\n' "Disabling hostapd and dnsmasq services at boot" "${BLUE}Enable WiPi at boot to start your AP at boot${NORMAL}"
+if sudo systemctl disable hostapd.service &> /dev/null ; then
+  printf '%s\n' "hostapd disabled at boot"
+else
+  printf '%s\n' "unable to disable hostapd at boot"
+fi
+if sudo systemctl disable dnsmasq.service &> /dev/null ; then
+  printf '%s\n' "dnsmasq disabled at boot"
+else
+  printf '%s\n' "unable to disable dnsmasq at boot"
+fi
 
 #create systemd file
 printf '%s\n' "Adding systemd file"
@@ -73,5 +82,4 @@ if ! grep "WiPi=\"$DIR/WiPi.sh\"" .bash_aliases; then
 fi
 . ~/.bash_aliases
 
-printf '%s\n' "You should now be able to start WiPi by simply typing '${GREEN}WiPi${NORMAL}'"
-#printf '%s\n' "Type '${GREEN}WiPi add${NORMAL}' to add a new AP setup"
+printf '%s\n' "You can run WiPi by typing '${GREEN}WiPi${NORMAL}'"
